@@ -1,0 +1,236 @@
+# Go Localization Backend
+
+A Go Fiber application for localization services with comprehensive load testing tools.
+
+> 🚀 **[Quick Start Guide](QUICK_START.md)** | 📖 **[Load Testing Guide](LOAD_TESTING.md)** | 🔥 **[Connection Hogging Test](CONNECTION_HOGGING_TEST.md)** | 💥 **[EXTREME Hog Test](EXTREME_HOG_TEST.md)**
+
+## Quick Start with Docker
+
+### Start the server
+```bash
+make up
+# or
+make docker-up
+```
+
+### Stop the server
+```bash
+make down
+# or
+make docker-down
+```
+
+### View logs
+```bash
+make docker-logs
+```
+
+### Restart the server
+```bash
+make docker-restart
+```
+
+## API Endpoints
+
+- **GET** `/health` - Health check endpoint
+- **POST** `/experiment` - Experiment endpoint
+
+## Testing the Endpoints
+
+### Health Check
+```bash
+curl http://localhost:3000/health
+```
+
+### Experiment Endpoint
+```bash
+curl -X POST http://localhost:3000/experiment
+```
+
+## Load Testing
+
+The project includes comprehensive load testing tools to test server resilience under concurrent fast and slow requests.
+
+> 📖 For detailed load testing documentation, see [LOAD_TESTING.md](LOAD_TESTING.md)
+
+### Quick Load Tests
+
+```bash
+# Basic load test (10 fast clients, 5 slow clients, 30s)
+make load-test
+
+# Light load test (5 fast, 2 slow, 20s)
+make load-test-light
+
+# Heavy load test (50 fast, 20 slow, 60s)
+make load-test-heavy
+
+# Stress test (100 fast, 50 slow, 120s)
+make load-test-stress
+
+# Connection hogging test (demonstrates slow clients hogging connections)
+make load-test-hog
+
+# EXTREME hogging test (only 1 concurrent connection!)
+make load-test-hog-extreme
+```
+
+### Custom Load Test
+
+Use the Go load testing script with custom parameters:
+
+```bash
+go run cmd/loadtest/main.go \
+  -url http://localhost:3000 \
+  -fast 20 \
+  -slow 10 \
+  -requests 100 \
+  -slow-speed 1024 \
+  -duration 60s
+```
+
+**Parameters:**
+- `-url`: Server URL (default: http://localhost:3000)
+- `-fast`: Number of fast clients (default: 10)
+- `-slow`: Number of slow clients (default: 5)
+- `-requests`: Requests per client (default: 100)
+- `-slow-speed`: Slow client download speed in bytes/sec (default: 1024) - simulates slow network
+- `-duration`: Test duration (default: 30s)
+- `-hog-test`: Run connection hogging test (automatically adjusts clients and speed)
+
+### Simple Bash Load Test
+
+For a simpler shell-based test:
+
+```bash
+# Basic usage (10 fast, 5 slow, 30s)
+./simple_load_test.sh
+
+# Custom parameters: URL FAST_CLIENTS SLOW_CLIENTS DURATION
+./simple_load_test.sh http://localhost:3000 20 10 60
+```
+
+### Understanding the Results
+
+The load tests measure:
+- **Total Requests**: Total number of requests sent
+- **Success Rate**: Percentage of successful responses
+- **Latency Statistics**: Min, Max, Average, and Percentiles (p50, p90, p99)
+- **Throughput**: Requests per second
+- **Performance Assessment**: Automatic evaluation of results
+
+**Key Metrics Explained:**
+- **p50 (median)**: 50% of requests complete faster than this
+- **p90**: 90% of requests complete faster than this
+- **p99**: 99% of requests complete faster than this (critical for tail latency)
+- **Fast Client Latency**: Separate tracking for fast clients - watch this to see if slow clients impact fast ones
+- **Slow Client Latency**: Includes slow download time - expected to be higher
+
+**Good Performance Indicators:**
+- p50 < 50ms (Excellent), < 100ms (Good)
+- p99 < 200ms (Excellent), < 500ms (Good)
+- Success rate > 99%
+- **Fast clients maintain low latency even with slow network clients** (this is key!)
+
+### Special Test: Connection Hogging
+
+The connection hogging test (`make load-test-hog`) demonstrates how slow clients can impact fast clients:
+
+```bash
+make load-test-hog
+```
+
+This test:
+- Floods the server with many slow clients (50+)
+- Uses very slow download speeds (128 bytes/sec)
+- Tracks fast client latency separately
+- Shows if slow clients are blocking server resources
+
+**What to watch**: If fast client p99 latency increases significantly, your server is experiencing connection hogging.
+
+### Extreme Test: 1 Connection Only
+
+For the ultimate demonstration of hogging:
+
+```bash
+make load-test-hog-extreme
+```
+
+This test:
+- Limits server to **ONLY 1 concurrent connection**
+- Makes the problem impossible to miss
+- Shows throughput collapse (50+ req/s → ~1 req/s)
+- Demonstrates 200-700x latency increase
+- Perfect for demonstrating the problem to stakeholders
+
+See [EXTREME_HOG_TEST.md](EXTREME_HOG_TEST.md) for detailed documentation.
+
+## Development
+
+### Run locally (without Docker)
+```bash
+make run
+```
+
+### Build the application
+```bash
+make build
+```
+
+### Install dependencies
+```bash
+make deps
+```
+
+### Format code
+```bash
+make fmt
+```
+
+### See all available commands
+```bash
+make help
+```
+
+## Requirements
+
+- Docker and Docker Compose (for containerized deployment)
+- Go 1.23.1+ (for local development)
+
+## Project Structure
+
+```
+.
+├── main.go                      # Main application file
+├── go.mod                       # Go module file
+├── go.sum                       # Go dependencies checksum
+├── Makefile                     # Build and run commands
+├── Dockerfile                   # Docker image definition
+├── docker-compose.yml           # Docker Compose configuration
+├── simple_load_test.sh          # Simple load testing script (Bash)
+├── demo_test.sh                 # Quick demo script
+├── cmd/
+│   └── loadtest/
+│       └── main.go              # Advanced load testing tool (Go)
+└── payloads/                    # JSON payload examples
+```
+
+## Complete Workflow Example
+
+```bash
+# 1. Start the server
+make up
+
+# 2. Test basic functionality
+curl http://localhost:3000/health
+
+# 3. Run load test
+make load-test
+
+# 4. View server logs
+make docker-logs
+
+# 5. Stop the server
+make down
+```
+

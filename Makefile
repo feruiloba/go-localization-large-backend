@@ -1,4 +1,4 @@
-.PHONY: help build run dev test clean docker-build docker-up docker-down docker-logs docker-restart load-test-normal load-test-saturation
+.PHONY: help build run dev test clean docker-build docker-up docker-down docker-logs docker-restart load-test-normal load-test-saturation load-test-allocation
 
 # Default target
 help:
@@ -22,6 +22,7 @@ help:
 	@echo "Load testing:"
 	@echo "  make load-test-normal     - Run normal load test (all fast clients)"
 	@echo "  make load-test-saturation - Run saturation load test (checking if fast clients stay fast)"
+	@echo "  make load-test-allocation - Run A/B allocation consistency test"
 
 # Build the application
 build:
@@ -115,4 +116,12 @@ load-test-saturation:
 build-load-test:
 	@echo "Building load test binary..."
 	go build -o bin/loadtest cmd/loadtest/main.go
+
+# A/B allocation consistency test
+load-test-allocation:
+	@echo "Running A/B allocation consistency test..."
+	@echo "This test verifies that each user always receives the same payload."
+	@echo "Make sure the server is running (make up or make run)"
+	@sleep 2
+	go run cmd/allocationtest/main.go -users 100 -requests 5 -concurrency 10 -output allocation_test_results.md
 

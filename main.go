@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -62,11 +63,36 @@ func init() {
 }
 
 func main() {
-	// Create a new Fiber instance
+	// Create a new Fiber instance with slow client protections
 	app := fiber.New(fiber.Config{
-		AppName: "Go Localization Backend",
-		// Disable startup message for cleaner output during tests
+		AppName:               "Go Localization Backend",
 		DisableStartupMessage: false,
+
+		// Slow client protection: timeouts prevent clients from holding connections
+		// indefinitely. These are critical for preventing "slowloris" style attacks
+		// and resource exhaustion from slow network clients.
+
+		// ReadTimeout: Max time to read the full request including body.
+		// Protects against slow request senders.
+		ReadTimeout: 5 * time.Second,
+
+		// WriteTimeout: Max time to write the full response.
+		// This is the KEY protection against slow clients - if a client can't
+		// receive our ~1MB payload within this time, we close the connection
+		// rather than letting them hog server resources.
+		WriteTimeout: 10 * time.Second,
+
+		// IdleTimeout: Max time to wait for the next request on a keep-alive connection.
+		// Frees up connections from idle clients.
+		IdleTimeout: 30 * time.Second,
+
+		// Concurrency: Max concurrent connections. Provides a hard cap on resource usage.
+		// Default is 256*1024 which is very high - we set a reasonable limit.
+		Concurrency: 10000,
+
+		// BodyLimit: Max request body size (1MB). Prevents memory exhaustion from
+		// clients sending huge request bodies.
+		BodyLimit: 1 * 1024 * 1024,
 	})
 
 	// Middleware

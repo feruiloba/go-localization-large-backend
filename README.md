@@ -75,6 +75,78 @@ The `/experiment` endpoint implements deterministic A/B testing:
 
 This ensures that each user consistently receives the same localization payload across multiple requests, which is essential for A/B testing integrity.
 
+## Slow Client Protection
+
+### The Problem
+
+When serving large payloads (~1MB) over the internet, slow clients pose a significant risk:
+
+1. **Connection Hogging**: A client on a slow network (e.g., 10KB/s) takes ~100 seconds to download 1MB. During this time, the server goroutine is blocked waiting to write to that client's TCP socket.
+
+2. **Resource Exhaustion**: If enough slow clients connect simultaneously, all server resources (goroutines, connections, memory) get tied up, and fast clients experience degraded performance or timeouts.
+
+3. **Cascading Failures**: Under load, new requests queue up waiting for connections, latencies spike, and the server can become unresponsive.
+
+### Server-Side Protections
+
+The server implements several protections in the Fiber configuration:
+
+```go
+ReadTimeout:  5 * time.Second   // Max time to read request
+WriteTimeout: 10 * time.Second  // Max time to write response (KEY protection)
+IdleTimeout:  30 * time.Second  // Max idle time on keep-alive connections
+Concurrency:  10000             // Max concurrent connections
+BodyLimit:    1 * 1024 * 1024   // Max request body size (1MB)
+```
+
+**WriteTimeout is the critical setting** - if a client can't receive the full response within 10 seconds, the connection is closed. This prevents slow clients from indefinitely holding server resources.
+
+### Production Recommendation: Reverse Proxy Buffering
+
+While server-side timeouts help, the **recommended production solution** is to put a reverse proxy (nginx, HAProxy, or a cloud load balancer) in front of the application:
+
+```
+[Slow Client] <--slow--> [nginx] <--fast--> [Go Backend]
+```
+
+**How it works:**
+1. The Go backend writes the full 1MB response to nginx in milliseconds (fast local connection)
+2. nginx buffers the response in memory/disk
+3. nginx handles the slow delivery to the client separately
+4. The Go backend is immediately free to handle the next request
+
+**nginx configuration example:**
+```nginx
+location /experiment {
+    proxy_pass http://backend:3000;
+    proxy_buffering on;
+    proxy_buffer_size 128k;
+    proxy_buffers 4 256k;
+    proxy_busy_buffers_size 256k;
+
+    # nginx handles slow clients, not your app
+    proxy_read_timeout 5s;      # Backend should respond quickly
+    send_timeout 120s;          # Allow slow client downloads
+}
+```
+
+This architecture ensures:
+- **Fast clients stay fast**: Backend latency remains low regardless of slow clients
+- **Slow clients still work**: They just get served by nginx, not your app server
+- **Better resource utilization**: Go handles requests/sec, nginx handles bytes/sec
+
+### Testing Slow Client Behavior
+
+Use the allocation test to verify consistent behavior under load:
+```bash
+make load-test-allocation
+```
+
+Use the saturation test to observe slow client impact:
+```bash
+make load-test-saturation
+```
+
 ## Load Testing
 
 The project includes comprehensive load testing tools to test server resilience under concurrent fast and slow requests.

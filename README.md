@@ -33,7 +33,7 @@ make docker-restart
 ## API Endpoints
 
 - **GET** `/health` - Health check endpoint
-- **POST** `/experiment` - Experiment endpoint
+- **POST** `/experiment` - A/B testing endpoint that returns a deterministic payload based on user ID
 
 ## Testing the Endpoints
 
@@ -44,8 +44,36 @@ curl http://localhost:3000/health
 
 ### Experiment Endpoint
 ```bash
-curl -X POST http://localhost:3000/experiment
+curl -X POST http://localhost:3000/experiment \
+  -H "Content-Type: application/json" \
+  -d '{"userId": "user-123"}'
 ```
+
+**Request Body:**
+```json
+{
+  "userId": "user-123"
+}
+```
+
+**Response:**
+```json
+{
+  "experimentId": "exp-localization-v1",
+  "selectedPayloadName": "small_payload.json",
+  "payload": "{ ... payload content ... }"
+}
+```
+
+## A/B Testing Implementation
+
+The `/experiment` endpoint implements deterministic A/B testing:
+
+- **Payload Loading**: All JSON files from the `payloads/` directory are loaded at startup, sorted alphabetically for consistent ordering
+- **Deterministic Assignment**: Uses FNV-1a hash of the `userId` to assign users to payloads. The same user always receives the same payload
+- **Even Distribution**: Users are evenly distributed across all available payloads using `hash % numPayloads`
+
+This ensures that each user consistently receives the same localization payload across multiple requests, which is essential for A/B testing integrity.
 
 ## Load Testing
 

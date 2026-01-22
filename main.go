@@ -1,29 +1,64 @@
 package main
 
 import (
+	"hash/fnv"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+
+	"go-localization-large-backend/pkg/model"
 )
 
-var dummyPayload []byte
+// Payload holds the name and content of a payload file
+type Payload struct {
+	Name    string
+	Content string
+}
+
+var payloads []Payload
 
 func init() {
-	var err error
-	// Load the 1MB payload from the payloads directory
-	payloadPath := filepath.Join("payloads", "localization_dummy_3.json")
-	dummyPayload, err = os.ReadFile(payloadPath)
+	// Load all payload files from the payloads directory
+	payloadDir := "payloads"
+	entries, err := os.ReadDir(payloadDir)
 	if err != nil {
-		log.Printf("⚠️  Error loading payload from %s: %v", payloadPath, err)
-		// Fallback to empty JSON object if file fails to load
-		dummyPayload = []byte("{}")
-	} else {
-		log.Printf("✅ Loaded dummy payload (%d bytes)", len(dummyPayload))
+		log.Fatalf("Failed to read payloads directory: %v", err)
 	}
+
+	// Collect and sort payload names for deterministic ordering
+	var payloadNames []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+			payloadNames = append(payloadNames, entry.Name())
+		}
+	}
+	sort.Strings(payloadNames)
+
+	// Load each payload
+	for _, name := range payloadNames {
+		payloadPath := filepath.Join(payloadDir, name)
+		content, err := os.ReadFile(payloadPath)
+		if err != nil {
+			log.Printf("Warning: failed to load %s: %v", payloadPath, err)
+			continue
+		}
+		payloads = append(payloads, Payload{
+			Name:    name,
+			Content: string(content),
+		})
+		log.Printf("Loaded payload: %s (%d bytes)", name, len(content))
+	}
+
+	if len(payloads) == 0 {
+		log.Fatal("No payloads loaded")
+	}
+	log.Printf("Loaded %d payloads total", len(payloads))
 }
 
 func main() {
@@ -58,7 +93,35 @@ func healthCheck(c *fiber.Ctx) error {
 
 // Experiment handler
 func experiment(c *fiber.Ctx) error {
+	var req model.Request
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
 
-	c.Set("Content-Type", "application/json")
-	return c.Send(dummyPayload)
+	if req.UserID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "userId is required",
+		})
+	}
+
+	// Deterministically assign a payload based on UserID hash
+	payload := getPayloadForUser(req.UserID)
+
+	response := model.Response{
+		ExperimentID:        "exp-localization-v1",
+		SelectedPayloadName: payload.Name,
+		Payload:             payload.Content,
+	}
+
+	return c.JSON(response)
+}
+
+// getPayloadForUser returns a deterministic payload for a given user ID
+func getPayloadForUser(userID string) Payload {
+	h := fnv.New32a()
+	h.Write([]byte(userID))
+	index := int(h.Sum32()) % len(payloads)
+	return payloads[index]
 }

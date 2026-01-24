@@ -22,9 +22,9 @@ type Request struct {
 }
 
 type Response struct {
-	ExperimentID        string `json:"experimentId"`
-	SelectedPayloadName string `json:"selectedPayloadName"`
-	Payload             string `json:"payload"`
+	ExperimentID        string          `json:"experimentId"`
+	SelectedPayloadName string          `json:"selectedPayloadName"`
+	Payload             json.RawMessage `json:"payload"`
 }
 
 type UserAllocation struct {
@@ -217,6 +217,14 @@ func makeRequest(client *http.Client, url, userID string) (string, error) {
 		return "", err
 	}
 
+	// Validate that the payload is valid JSON (not an escaped string)
+	if len(response.Payload) > 0 {
+		var payloadCheck interface{}
+		if err := json.Unmarshal(response.Payload, &payloadCheck); err != nil {
+			return "", fmt.Errorf("payload is not valid JSON: %v", err)
+		}
+	}
+
 	return response.SelectedPayloadName, nil
 }
 
@@ -320,15 +328,35 @@ func printSummary(results TestResults) {
 	fmt.Println("Payload Distribution:")
 	// Sort payloads for consistent output
 	var payloadNames []string
+	nestedCount := 0
 	for name := range results.PayloadDistribution {
 		payloadNames = append(payloadNames, name)
+		if strings.HasPrefix(name, "nested_large.json[") {
+			nestedCount++
+		}
 	}
 	sort.Strings(payloadNames)
 
-	for _, name := range payloadNames {
+	// Show first 10 payloads
+	maxShow := 10
+	if len(payloadNames) < maxShow {
+		maxShow = len(payloadNames)
+	}
+
+	for i := 0; i < maxShow; i++ {
+		name := payloadNames[i]
 		count := results.PayloadDistribution[name]
 		pct := float64(count) / float64(results.TotalUsers) * 100
 		fmt.Printf("  %s: %d users (%.1f%%)\n", name, count, pct)
+	}
+
+	if len(payloadNames) > maxShow {
+		fmt.Printf("  ... and %d more payloads\n", len(payloadNames)-maxShow)
+	}
+
+	fmt.Printf("\nTotal unique payloads: %d\n", len(payloadNames))
+	if nestedCount > 0 {
+		fmt.Printf("  - Including %d items from nested_large.json array\n", nestedCount)
 	}
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 }

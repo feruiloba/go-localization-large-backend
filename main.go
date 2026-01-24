@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"hash/fnv"
 	"log"
 	"os"
@@ -49,11 +51,38 @@ func init() {
 			log.Printf("Warning: failed to load %s: %v", payloadPath, err)
 			continue
 		}
-		payloads = append(payloads, Payload{
-			Name:    name,
-			Content: string(content),
-		})
-		log.Printf("Loaded payload: %s (%d bytes)", name, len(content))
+
+		// Parse JSON to check structure
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(content, &parsed); err != nil {
+			log.Printf("Warning: %s contains invalid JSON: %v", payloadPath, err)
+			continue
+		}
+
+		// Check if this JSON has a "payloads" array
+		if payloadsArray, ok := parsed["payloads"].([]interface{}); ok {
+			// Extract individual payloads from the array
+			log.Printf("Found payloads array in %s with %d items", name, len(payloadsArray))
+			for i, item := range payloadsArray {
+				itemBytes, err := json.Marshal(item)
+				if err != nil {
+					log.Printf("Warning: failed to marshal payload %d from %s: %v", i, name, err)
+					continue
+				}
+				payloads = append(payloads, Payload{
+					Name:    fmt.Sprintf("%s[%d]", name, i),
+					Content: string(itemBytes),
+				})
+			}
+			log.Printf("Loaded %d payloads from %s", len(payloadsArray), name)
+		} else {
+			// No "payloads" array, use the whole file as one payload
+			payloads = append(payloads, Payload{
+				Name:    name,
+				Content: string(content),
+			})
+			log.Printf("Loaded payload: %s (%d bytes)", name, len(content))
+		}
 	}
 
 	if len(payloads) == 0 {
@@ -138,7 +167,7 @@ func experiment(c *fiber.Ctx) error {
 	response := model.Response{
 		ExperimentID:        "exp-localization-v1",
 		SelectedPayloadName: payload.Name,
-		Payload:             payload.Content,
+		Payload:             json.RawMessage(payload.Content),
 	}
 
 	return c.JSON(response)

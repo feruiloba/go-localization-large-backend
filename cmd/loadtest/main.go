@@ -292,9 +292,10 @@ func runSlowClient(_ int, config TestConfig, stats *Stats, ctx chan bool) {
 func makeFastRequest(client *http.Client, url string, stats *Stats) {
 	stats.totalRequests.Add(1)
 
+	// Generate a unique userId for each request
+	userID := fmt.Sprintf("fast-user-%d", time.Now().UnixNano())
 	payload := map[string]string{
-		"type":      "fast",
-		"timestamp": time.Now().Format(time.RFC3339),
+		"userId": userID,
 	}
 	jsonData, _ := json.Marshal(payload)
 
@@ -328,9 +329,10 @@ func makeFastRequest(client *http.Client, url string, stats *Stats) {
 func makeSlowRequest(client *http.Client, url string, bytesPerSec int, stats *Stats) {
 	stats.totalRequests.Add(1)
 
+	// Generate a unique userId for each request
+	userID := fmt.Sprintf("slow-user-%d", time.Now().UnixNano())
 	payload := map[string]string{
-		"type":      "slow",
-		"timestamp": time.Now().Format(time.RFC3339),
+		"userId": userID,
 	}
 	jsonData, _ := json.Marshal(payload)
 
